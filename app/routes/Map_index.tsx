@@ -1,5 +1,5 @@
 import { Point } from 'geojson';
-import { useEffect, useRef, useState } from 'react';
+import { DOMElement, ReactElement, useEffect, useRef, useState } from 'react';
 
 import type { MetaFunction } from '@remix-run/node';
 import { json, useLoaderData } from '@remix-run/react';
@@ -25,6 +25,7 @@ const colorList = ['brown', 'coral', 'blueviolet', 'cyan', 'magenta', 'orange', 
 export default function MapComp() {
   const ld = useLoaderData<typeof loader>();
   const mapContainer = useRef(null);
+  const missingAPIKeyContainer = useRef(null);
   const mapref = useRef<msdk.Map | null>(null);
   const [zoom] = useState(12);
   useEffect(() => {
@@ -37,6 +38,9 @@ export default function MapComp() {
     if (mapref.current) {
       mapref.current.redraw();
       return;
+    }
+    if (missingAPIKeyContainer.current) {
+      missingAPIKeyContainer.current.remove();
     }
     mapref.current = new msdk.Map({
       container: mapContainer.current,
@@ -105,16 +109,15 @@ export default function MapComp() {
       clearDistricts();
       loadDistricts(e.lngLat.toArray());
     });
-  }, [zoom, mapContainer, ld]);
+  }, [zoom, mapContainer, ld, missingAPIKeyContainer]);
 
   return (
     <div className="map-wrap relative w-full h-screen">
       <div ref={mapContainer} className="map absolute w-full h-full" id="map" />
-      {!msdk.config.apiKey ? (
-        <div className="py-10 border-red-500 border-2">
-          <p>missing API key</p>
-        </div>
-      ) : null}
+
+      <div className="py-10 border-red-500 border-2" ref={missingAPIKeyContainer}>
+        <p>missing API key</p>
+      </div>
     </div>
   );
 }
