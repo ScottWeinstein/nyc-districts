@@ -1,16 +1,17 @@
 import { Point } from 'geojson';
-import { DOMElement, ReactElement, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import type { MetaFunction } from '@remix-run/node';
-import { json, useLoaderData } from '@remix-run/react';
 import { GeocodingControl } from '@maptiler/geocoding-control/maptilersdk';
 import '@maptiler/geocoding-control/style.css';
 import * as msdk from '@maptiler/sdk';
 import '@maptiler/sdk/dist/maptiler-sdk.css';
+import type { MetaFunction } from '@remix-run/node';
+import { json, useLoaderData } from '@remix-run/react';
 import '@watergis/maplibre-gl-legend/dist/maplibre-gl-legend.css';
 
 // const columbusCircle = [40.76808, -73.98223];
 
+import { LngLat } from '@maptiler/sdk';
 import { getData, getSurroudingDistricts } from '../Districts';
 
 export const loader = async () => {
@@ -40,7 +41,7 @@ export default function MapComp() {
       return;
     }
     if (missingAPIKeyContainer.current) {
-      missingAPIKeyContainer.current.remove();
+      (missingAPIKeyContainer.current as unknown as any).remove();
     }
     mapref.current = new msdk.Map({
       container: mapContainer.current,
@@ -49,10 +50,9 @@ export default function MapComp() {
       zoom: zoom,
     });
     const map = mapref.current;
-    const gc = new GeocodingControl();
-    map.addControl(gc, 'top-left');
 
-    let targets: { [index: string]: string } = {};
+    // setup legend and state
+    let targets: { [index: string]: string } = { none: 'none' };
     let sources: Array<string> = [];
     let legendControl: msdk.IControl | null = null;
     /* eslint-disable  @typescript-eslint/no-explicit-any */
@@ -63,6 +63,28 @@ export default function MapComp() {
       onlyRendered: false,
       reverseOrder: false,
     };
+
+    // setup search
+    const gc = new GeocodingControl({ marker: false, zoom, flyTo: false });
+    gc.addEventListener('pick', (e) => {
+      const feature = (e as unknown as any).detail as msdk.Feature;
+      if (!feature) {
+        clearDistricts();
+      } else {
+        const p = feature.geometry as unknown as Point;
+        console.log(p);
+        loadDistricts(p.coordinates);
+      }
+    });
+    map.addControl(gc, 'top-left');
+
+    const pin = new msdk.Marker().setLngLat(map.getCenter());
+    pin.addTo(map);
+    function setPin(p: Array<number>) {
+      const ll = new LngLat(p[0], p[1]);
+      pin.setLngLat(ll);
+    }
+
     const clearDistricts = () => {
       for (const s of sources) {
         map.removeLayer(s);
@@ -74,8 +96,10 @@ export default function MapComp() {
       legendControl = null;
       sources = [];
       targets = {};
+      pin.setLngLat([0, 0]);
     };
-    function loadDistricts(p: Point | Array<number>) {
+    function loadDistricts(p: Array<number>) {
+      clearDistricts();
       const myDistricts = getSurroudingDistricts(ld.districts, p);
       let ii = 0;
       for (const district of myDistricts) {
@@ -95,18 +119,16 @@ export default function MapComp() {
         });
         sources.push(district.zone);
       }
-
       legendControl = new MaplibreLegendControl.MaplibreLegendControl(targets, legendOptions);
       map.addControl(legendControl!, 'bottom-left');
+      setPin(p);
     }
 
     map.on('load', async () => {
-      clearDistricts();
       loadDistricts(map.getCenter().toArray());
     });
 
     map.on('mousedown', (e) => {
-      clearDistricts();
       loadDistricts(e.lngLat.toArray());
     });
   }, [zoom, mapContainer, ld, missingAPIKeyContainer]);
